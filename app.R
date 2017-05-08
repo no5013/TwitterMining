@@ -4,12 +4,13 @@ require(RCurl)
 require(tm)
 require(wordcloud)
 require(ggplot2)
+source("http://biostat.jhsph.edu/~jleek/code/twitterMap.R")
 
 ui <- fluidPage(
   textInput(inputId="search", label="search word"),
   textInput(inputId="n", label="N"),
   actionButton(inputId="GO", label="GO"),
-  
+
   plotOutput("wordCloud"),
   plotOutput("barGraph"),
   plotOutput("cluster")
@@ -44,8 +45,9 @@ server <- function(input, output) {
 	word_clean <- tm_map(word_clean, content_transformer(tolower))
 	word_clean <- tm_map(word_clean,removeWords, c(isolate(input$search),"the","via","from","use","amp","for","just"))
 	
+	word_tdm <- TermDocumentMatrix(word_clean,   control = list(wordLengths = c(1, Inf)))
+	
 	#term document
-	word_tdm <- TermDocumentMatrix(word_clean,control = list(wordLengths = c(1, Inf)))
 	idx <- which(dimnames(word_tdm)$Terms %in% c(isolate(input$search)))
 
 
@@ -70,16 +72,15 @@ server <- function(input, output) {
 	})
 	
 	output$cluster <- renderPlot({
-	
-		word_tdm2 <- removeSparseTerms(word_tdm,sparse=0.95)
-		matrix2 <- as.matrix(word_tdm2)
-	
-		#clustering terms
-		distMatrix <- dist(scale(matrix2))
-		fit <- hclust(distMatrix,method="ward")
-		rect.hclust(fit, k =6)
-
+	  tdm2 <- removeSparseTerms(word_tdm, sparse = 0.95)
+	  m2 <- as.matrix(tdm2)
+	  distMatrix <- dist(scale(m2))
+	  fit <- hclust(distMatrix, method = "ward")
+	  plot(fit)
+	  rect.hclust(fit, k = 4)
 	})
+	
+	twitterMap(input$search,plotType="followers", userLocation="Japan")
 
   })
 }
