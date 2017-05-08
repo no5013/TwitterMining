@@ -10,10 +10,14 @@ ui <- fluidPage(
   textInput(inputId="search", label="search word"),
   textInput(inputId="n", label="N"),
   actionButton(inputId="GO", label="GO"),
-
+  actionButton(inputId="RenderMap", label="RenderMap"),
+  sliderInput(inputId = "graphSlider", min = 1, max = 30, value = 10, label = "Min Frequent"),
+  sliderInput(inputId = "clusterSlider", min = 2, max = 10, value = 5, label = "Number of cluster"),
+  
   plotOutput("wordCloud"),
   plotOutput("barGraph"),
-  plotOutput("cluster")
+  plotOutput("cluster"),
+  verbatimTextOutput("clusterInfo")
 )
 
 server <- function(input, output) {
@@ -43,17 +47,21 @@ server <- function(input, output) {
 	word_clean <- tm_map(word_clean, content_transformer(removeNumPunct))
 	word_clean <- tm_map(word_clean,stripWhitespace)
 	word_clean <- tm_map(word_clean, content_transformer(tolower))
-	word_clean <- tm_map(word_clean,removeWords, c(isolate(input$search),"the","via","from","use","amp","for","just"))
+	word_clean <- tm_map(word_clean,removeWords, c(isolate(input$search),"the","via","from","use","amp","for","just","I","i","a","link"))
 	
 	word_tdm <- TermDocumentMatrix(word_clean,   control = list(wordLengths = c(1, Inf)))
+	
+	
 	
 	#term document
 	idx <- which(dimnames(word_tdm)$Terms %in% c(isolate(input$search)))
 
-
+	#Clustering
+	tdm2 <- removeSparseTerms(word_tdm, sparse = 0.95)
+	m2 <- as.matrix(tdm2)
+	distMatrix <- dist(scale(m2))
 	
-    output$wordCloud <- renderPlot({
-      	
+  output$wordCloud <- renderPlot({
 		#wordcloud
 		wordcloud(word_clean,max.word=50)
 	
@@ -63,7 +71,7 @@ server <- function(input, output) {
 		#inspect frequent words
 		(freq.terms <- findFreqTerms(word_tdm, lowfreq = 10))
 		term.freq <- rowSums(as.matrix(word_tdm))
-		term.freq <- subset(term.freq, term.freq >= 10)
+		term.freq <- subset(term.freq, term.freq >= input$graphSlider)
 		word_df <- data.frame(term = names(term.freq), freq = term.freq)
 
 		#plot bargraph
@@ -72,16 +80,31 @@ server <- function(input, output) {
 	})
 	
 	output$cluster <- renderPlot({
-	  tdm2 <- removeSparseTerms(word_tdm, sparse = 0.95)
-	  m2 <- as.matrix(tdm2)
-	  distMatrix <- dist(scale(m2))
-	  fit <- hclust(distMatrix, method = "ward")
+	
+	  fit <- hclust(distMatrix, method = "ward.D2")
 	  plot(fit)
-	  rect.hclust(fit, k = 4)
+	  rect.hclust(fit, k = input$clusterSlider)
+	  
 	})
 	
-	twitterMap(input$search,plotType="followers", userLocation="Japan")
+	output$clusterInfo <- renderPrint({
+	  m3 <- t(m2)
+	  set.seed(122)
+	  k <- input$clusterSlider
+	  kmeansResult <- kmeans(m3, k)
+	  round(kmeansResult$centers, digits = 3)
+	  for (i in 1:k)
+	  {
+	    cat(paste("cluster ", i, ":  ", sep = ""))
+	    s <- sort(kmeansResult$centers[i, ], decreasing = T)
+	    cat(names(s)[1:5],"+\n")
+	  }
+	})
+	
 
+  })
+  observeEvent(input$RenderMap, {
+    twitterMap(input$search,plotType="followers", userLocation="Japan")
   })
 }
 
