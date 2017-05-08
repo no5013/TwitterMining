@@ -3,6 +3,7 @@ require(twitteR)
 require(RCurl)
 require(tm)
 require(wordcloud)
+require(ggplot2)
 
 ui <- fluidPage(
   textInput(inputId="search", label="search word"),
@@ -25,20 +26,40 @@ server <- function(input, output) {
     output$wordCloud <- renderPlot({
       
       #search word from twitter store in word_tweets ,change to text
-      word_tweets <- searchTwitter(isolate(input$search), n=isolate(input$n), lang="en",resultType="recent")
-      word_text <- sapply( word_tweets, function(x) x$getText())
-      word_corpus <- Corpus(VectorSource(word_text))
-      
-      #data-preprocessing
-      word_clean <- tm_map(word_corpus, removePunctuation)
-      word_clean <- tm_map(word_clean, content_transformer(tolower))
-      word_clean <- tm_map(word_clean,removeWords, stopwords("english"))
-      word_clean <- tm_map(word_clean,removeNumbers)
-      word_clean <- tm_map(word_clean,stripWhitespace)
-      word_clean <- tm_map(word_clean,removeWords, c("Justin"))
-      
-      #wordcloud
-      wordcloud(word_clean)
+	word_tweets <- searchTwitter("Guardians Galaxy 2" ,n=500, lang="en")
+	word_strip <- strip_retweets(word_tweets, strip_manual = TRUE, strip_mt = TRUE)
+	word_text <- sapply( word_strip, function(x) x$getText())
+	word_corpus <- Corpus(VectorSource(word_text))
+
+	#data-preprocessing
+	removeUser <- function(x) gsub("@[^[:space:]]*", "", x)
+	word_clean <- tm_map(word_corpus, content_transformer(removeUser))
+	word_clean <- tm_map(word_clean, removePunctuation)
+	word_clean <- tm_map(word_clean, content_transformer(tolower))
+	word_clean <- tm_map(word_clean,removeWords, stopwords("english"))
+	removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+	word_clean <- tm_map(word_clean, content_transformer(removeURL))
+	removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*", "", x)
+	word_clean <- tm_map(word_clean, content_transformer(removeNumPunct))
+	word_clean <- tm_map(word_clean,stripWhitespace)
+	word_clean <- tm_map(word_clean,removeWords, c("Guardians Galaxy 2"))
+
+	#term document
+	word_tdm <- TermDocumentMatrix(word_clean,control = list(wordLengths = c(1, Inf)))
+	idx <- which(dimnames(word_tdm)$Terms %in% c("guardians", "galaxy"))
+
+	#inspect frequent words
+	(freq.terms <- findFreqTerms(word_tdm, lowfreq = 10))
+	term.freq <- rowSums(as.matrix(word_tdm))
+	term.freq <- subset(term.freq, term.freq >= 10)
+	word_df <- data.frame(term = names(term.freq), freq = term.freq)
+
+	#plot bargraph
+	ggplot(df, aes(x = term, y = freq)) + geom_bar(stat = "identity") + xlab("Terms") + ylab("Count") + coord_flip()
+	
+	#wordcloud
+	wordcloud(word_clean,max.word=30)
+
     })
   })
 }
